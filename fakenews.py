@@ -6,6 +6,7 @@ import pandas as pd
 import streamlit as st
 from nltk.corpus import stopwords
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
+from sklearn.model_selection import train_test_split
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.pipeline import Pipeline
 
@@ -33,9 +34,28 @@ def process_text(s):
     clean_string = [word for word in nopunc.split() if word.lower() not in stopwords.words('indonesian')]
     return clean_string
 
+# Tokenize the text :Convert the normal text strings in to a list of tokens (words that we actually want)
+#rerun, takes LOOOONG
+news['Clean Text'] = news['Article'].apply(process_text)
+
+bow_transformer = CountVectorizer(analyzer=process_text).fit(news['Clean Text'])
+
+#Bag-of-Words (bow) transform the entire DataFrame of text
+news_bow = bow_transformer.transform(news['Clean Text'])
+
+sparsity = (100.0 * news_bow.nnz / (news_bow.shape[0] * news_bow.shape[1]))
+
+tfidf_transformer = TfidfTransformer().fit(news_bow)
+news_tfidf = tfidf_transformer.transform(news_bow)
+
+#Train Naive Bayes Model
+fakenews_detect_model = MultinomialNB().fit(news_tfidf, news['True/Fake'])
+
+#Model Evaluation
+predictions = fakenews_detect_model.predict(news_tfidf)
 
 # Tokenize the text
-news['Clean Text'] = news['Article'].apply(process_text)
+news_train, news_test, text_train, text_test = train_test_split(news['Article'], news['True/Fake'], test_size=0.3)
 
 # Train Naive Bayes Model
 pipeline = Pipeline([
@@ -44,7 +64,7 @@ pipeline = Pipeline([
     ('classifier', MultinomialNB())
 ])
 
-pipeline.fit(news['Clean Text'], news['True/Fake'])
+pipeline.fit(news_train,text_train)
 
 
 # Streamlit app
@@ -54,13 +74,9 @@ st.title("Fake News Detection App")
 user_input = st.text_input("Enter the news text:")
 
 if user_input:
-    # Preprocess the input text
-    cleaned_input = process_text(user_input)
-    input_text = ' '.join(cleaned_input)
-
     # Predict using the trained model
-    prediction = pipeline.predict([input_text])[0]
+    prediction = pipeline.predict([user_input])
 
     # Display the result
     st.subheader("Prediction:")
-    st.write(f"The input news is classified as: {prediction}")
+    st.write(f"The input news is classified as: {prediction[0]}")
